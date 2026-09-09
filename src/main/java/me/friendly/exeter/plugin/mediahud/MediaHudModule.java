@@ -22,6 +22,7 @@ public class MediaHudModule extends ToggleableModule {
   public MediaHudModule() {
     super("MediaHud", new String[] {"media", "nowplaying", "music"}, ModuleType.RENDER);
     setDescription("Displays the currently playing track on screen.");
+    this.listeners.add(renderListener);
   }
 
   @Override
@@ -36,7 +37,11 @@ public class MediaHudModule extends ToggleableModule {
 
   private void renderMediaInfo() {
     MediaInfo media = MediaInfo.getInstance();
-    if (!media.isPlaying()) return;
+
+    if (!media.isPlaying()) {
+      FontUtil.drawString("No media playing", X, Y, 0xFF888888);
+      return;
+    }
 
     String title = media.getTitle();
     String artist = media.getArtist();

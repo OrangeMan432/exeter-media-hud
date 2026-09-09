@@ -2,17 +2,26 @@ package me.friendly.exeter.plugin.mediahud;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.util.concurrent.CompletableFuture;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class MediaInfo {
   private static final String OS = System.getProperty("os.name").toLowerCase();
   private static MediaInfo instance;
 
-  private String title = "";
-  private String artist = "";
-  private long lastUpdate = 0;
-  private static final long UPDATE_INTERVAL_MS = 2000;
+  private volatile String title = "";
+  private volatile String artist = "";
+  private volatile boolean playing = false;
+
+  private final ScheduledExecutorService scheduler =
+      Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "MediaHud-Poller");
+        t.setDaemon(true);
+        return t;
+      });
 
   public static MediaInfo getInstance() {
     if (instance == null) {
@@ -21,144 +30,122 @@ public class MediaInfo {
     return instance;
   }
 
-  private MediaInfo() {}
-
-  public String getTitle() {
-    updateIfNeeded();
-    return title;
+  private MediaInfo() {
+    if (isWindows()) {
+      scheduler.scheduleAtFixedRate(this::pollWindows, 0, 2, TimeUnit.SECONDS);
+    } else if (isMac()) {
+      scheduler.scheduleAtFixedRate(this::pollMac, 0, 2, TimeUnit.SECONDS);
+    } else if (isLinux()) {
+      scheduler.scheduleAtFixedRate(this::pollLinux, 0, 2, TimeUnit.SECONDS);
+    }
   }
 
-  public String getArtist() {
-    updateIfNeeded();
-    return artist;
-  }
+  public String getTitle() { return title; }
+  public String getArtist() { return artist; }
+  public boolean isPlaying() { return playing; }
 
-  public boolean isPlaying() {
-    updateIfNeeded();
-    return !title.isEmpty();
-  }
-
-  private void updateIfNeeded() {
-    long now = System.currentTimeMillis();
-    if (now - lastUpdate < UPDATE_INTERVAL_MS) return;
-    lastUpdate = now;
-    fetchMediaInfo();
-  }
-
-  private void fetchMediaInfo() {
+  private void pollWindows() {
     try {
-      if (isWindows()) {
-        fetchWindows();
-      } else if (isMac()) {
-        fetchMac();
-      } else if (isLinux()) {
-        fetchLinux();
+      Path pluginsDir = Paths.get("plugins");
+      Path smtcExe = pluginsDir.resolve("smtc.exe");
+      if (!java.nio.file.Files.exists(smtcExe)) {
+        smtcExe = Paths.get("smtc.exe");
+      }
+      if (!java.nio.file.Files.exists(smtcExe)) {
+        title = "";
+        artist = "";
+        playing = false;
+        return;
+      }
+
+      ProcessBuilder pb = new ProcessBuilder(smtcExe.toAbsolutePath().toString());
+      pb.redirectErrorStream(true);
+      Process proc = pb.start();
+      String output = readOutput(proc);
+      boolean ok = proc.waitFor(4, TimeUnit.SECONDS);
+      if (!ok) proc.destroyForcibly();
+
+      if (output != null && output.contains("|")) {
+        String[] parts = output.split("\\|", 2);
+        String a = parts[0].trim();
+        String t = parts[1].trim();
+        if (!t.isEmpty()) {
+          artist = a;
+          title = t;
+          playing = true;
+          return;
+        }
       }
     } catch (Exception e) {
-      title = "";
-      artist = "";
+      // fall through
     }
+    title = "";
+    artist = "";
+    playing = false;
   }
 
-  private void fetchWindows() throws Exception {
-    String script =
-        "try {"
-            + "  [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media.Control,ContentType=WindowsRuntime] | Out-Null;"
-            + "  $mgr = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync().GetAwaiter().GetResult();"
-            + "  $session = $mgr.GetCurrentSession();"
-            + "  if ($session -ne $null) {"
-            + "    $info = $session.TryGetMediaPropertiesAsync().GetAwaiter().GetResult();"
-            + "    Write-Output ($info.Artist + '|' + $info.Title);"
-            + "  }"
-            + "} catch { }";
+  private void pollMac() {
+    try {
+      String script = "tell application \"Music\"\n"
+          + "  if player state is playing then\n"
+          + "    return artist of current track & \"|\" & name of current track\n"
+          + "  end if\nend tell\n"
+          + "tell application \"Spotify\"\n"
+          + "  if player state is playing then\n"
+          + "    return artist of current track & \"|\" & name of current track\n"
+          + "  end if\nend tell";
 
-    ProcessBuilder pb = new ProcessBuilder("powershell", "-NoProfile", "-Command", script);
-    pb.redirectErrorStream(true);
-    Process proc = pb.start();
-    String output = readOutput(proc);
-    boolean finished = proc.waitFor(5, TimeUnit.SECONDS);
-    if (!finished) {
-      proc.destroyForcibly();
-      title = "";
-      artist = "";
-      return;
-    }
+      ProcessBuilder pb = new ProcessBuilder("osascript", "-e", script);
+      pb.redirectErrorStream(true);
+      Process proc = pb.start();
+      String output = readOutput(proc);
+      boolean ok = proc.waitFor(4, TimeUnit.SECONDS);
+      if (!ok) proc.destroyForcibly();
 
-    if (output != null && output.contains("|")) {
-      String[] parts = output.split("\\|", 2);
-      artist = parts[0].trim();
-      title = parts[1].trim();
-    } else {
-      title = "";
-      artist = "";
+      if (output != null && output.contains("|")) {
+        String[] parts = output.split("\\|", 2);
+        artist = parts[0].trim();
+        title = parts[1].trim();
+        playing = !title.isEmpty();
+        return;
+      }
+    } catch (Exception e) {
+      // fall through
     }
+    title = "";
+    artist = "";
+    playing = false;
   }
 
-  private void fetchMac() throws Exception {
-    String script =
-        "tell application \"Music\"\n"
-            + "  if player state is playing then\n"
-            + "    set a to artist of current track\n"
-            + "    set t to name of current track\n"
-            + "    return a & \"|\" & t\n"
-            + "  end if\n"
-            + "end tell\n"
-            + "tell application \"Spotify\"\n"
-            + "  if player state is playing then\n"
-            + "    set a to artist of current track\n"
-            + "    set t to name of current track\n"
-            + "    return a & \"|\" & t\n"
-            + "  end if\n"
-            + "end tell";
+  private void pollLinux() {
+    try {
+      ProcessBuilder pb = new ProcessBuilder(
+          "playerctl", "metadata", "--format", "{{ artist }}|{{ title }}");
+      pb.redirectErrorStream(true);
+      Process proc = pb.start();
+      String output = readOutput(proc);
+      boolean ok = proc.waitFor(4, TimeUnit.SECONDS);
+      if (!ok) proc.destroyForcibly();
 
-    ProcessBuilder pb = new ProcessBuilder("osascript", "-e", script);
-    pb.redirectErrorStream(true);
-    Process proc = pb.start();
-    String output = readOutput(proc);
-    boolean finished = proc.waitFor(5, TimeUnit.SECONDS);
-    if (!finished) {
-      proc.destroyForcibly();
-      title = "";
-      artist = "";
-      return;
+      if (output != null && output.contains("|")) {
+        String[] parts = output.split("\\|", 2);
+        artist = parts[0].trim();
+        title = parts[1].trim();
+        playing = !title.isEmpty();
+        return;
+      }
+    } catch (Exception e) {
+      // fall through
     }
-
-    if (output != null && output.contains("|")) {
-      String[] parts = output.split("\\|", 2);
-      artist = parts[0].trim();
-      title = parts[1].trim();
-    } else {
-      title = "";
-      artist = "";
-    }
-  }
-
-  private void fetchLinux() throws Exception {
-    ProcessBuilder pb = new ProcessBuilder("playerctl", "metadata", "--format", "{{ artist }}|{{ title }}");
-    pb.redirectErrorStream(true);
-    Process proc = pb.start();
-    String output = readOutput(proc);
-    boolean finished = proc.waitFor(5, TimeUnit.SECONDS);
-    if (!finished) {
-      proc.destroyForcibly();
-      title = "";
-      artist = "";
-      return;
-    }
-
-    if (output != null && output.contains("|")) {
-      String[] parts = output.split("\\|", 2);
-      artist = parts[0].trim();
-      title = parts[1].trim();
-    } else {
-      title = "";
-      artist = "";
-    }
+    title = "";
+    artist = "";
+    playing = false;
   }
 
   private String readOutput(Process proc) throws Exception {
     StringBuilder sb = new StringBuilder();
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+    try (BufferedReader reader =
+        new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
       String line;
       while ((line = reader.readLine()) != null) {
         sb.append(line).append("\n");
@@ -167,15 +154,7 @@ public class MediaInfo {
     return sb.toString().trim();
   }
 
-  private static boolean isWindows() {
-    return OS.contains("win");
-  }
-
-  private static boolean isMac() {
-    return OS.contains("mac");
-  }
-
-  private static boolean isLinux() {
-    return OS.contains("nux") || OS.contains("nix");
-  }
+  private static boolean isWindows() { return OS.contains("win"); }
+  private static boolean isMac() { return OS.contains("mac"); }
+  private static boolean isLinux() { return OS.contains("nux") || OS.contains("nix"); }
 }
