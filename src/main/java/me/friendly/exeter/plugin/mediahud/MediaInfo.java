@@ -49,7 +49,11 @@ public class MediaInfo {
       Path pluginsDir = Paths.get("plugins");
       Path smtcExe = pluginsDir.resolve("smtc.exe");
       if (!java.nio.file.Files.exists(smtcExe)) {
-        smtcExe = Paths.get("smtc.exe");
+        try (var in = getClass().getResourceAsStream("/smtc.exe")) {
+          if (in != null) {
+            java.nio.file.Files.copy(in, smtcExe);
+          }
+        }
       }
       if (!java.nio.file.Files.exists(smtcExe)) {
         title = "";

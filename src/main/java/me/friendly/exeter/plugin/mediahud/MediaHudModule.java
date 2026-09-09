@@ -38,10 +38,7 @@ public class MediaHudModule extends ToggleableModule {
   private void renderMediaInfo() {
     MediaInfo media = MediaInfo.getInstance();
 
-    if (!media.isPlaying()) {
-      FontUtil.drawString("No media playing", X, Y, 0xFF888888);
-      return;
-    }
+    if (!media.isPlaying()) return;
 
     String title = media.getTitle();
     String artist = media.getArtist();
