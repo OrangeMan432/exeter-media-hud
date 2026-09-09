@@ -1,0 +1,33 @@
+plugins {
+    id 'java'
+}
+
+version = '1.0'
+group = 'me.friendly.exeter.plugin'
+
+base {
+    archivesName = 'exeter-media-hud'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+repositories {
+    mavenCentral()
+}
+
+def exeterJar = new File('C:/Users/orang/repos/meteor-autocart/meteor-addon-template/build/libs/exeter-1.0.jar')
+def mcJar = new File('C:/Users/orang/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-deobf/26.2/minecraft-merged-deobf-26.2.jar')
+
+dependencies {
+    compileOnly files(exeterJar, mcJar)
+}
+
+jar {
+    from(sourceSets.main.output)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
