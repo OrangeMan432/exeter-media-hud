@@ -46,7 +46,7 @@ public class MediaInfo {
 
   private void pollWindows() {
     try {
-      Path pluginsDir = Paths.get("plugins");
+      Path pluginsDir = Paths.get("config", "exeter", "plugins");
       Path smtcExe = pluginsDir.resolve("smtc.exe");
       if (!java.nio.file.Files.exists(smtcExe)) {
         try (var in = getClass().getResourceAsStream("/smtc.exe")) {

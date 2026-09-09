@@ -34,9 +34,12 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+def smtcFile = file('smtc-helper/smtc.exe')
 task copySmtc(type: Copy) {
-    from('smtc-helper/smtc.exe')
+    onlyIf { smtcFile.exists() }
+    from(smtcFile)
     into('src/main/resources')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-jar.dependsOn(copySmtc)
+processResources.dependsOn(copySmtc)
