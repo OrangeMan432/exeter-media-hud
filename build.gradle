@@ -33,3 +33,10 @@ jar {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
+
+task copySmtc(type: Copy) {
+    from('smtc-helper/smtc.exe')
+    into('src/main/resources')
+}
+
+jar.dependsOn(copySmtc)
