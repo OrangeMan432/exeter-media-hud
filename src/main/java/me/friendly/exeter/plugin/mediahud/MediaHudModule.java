@@ -1,52 +1,44 @@
 package me.friendly.exeter.plugin.mediahud;
 
-import me.friendly.api.event.Listener;
 import me.friendly.api.minecraft.render.font.FontUtil;
-import me.friendly.exeter.events.RenderGameOverlayEvent;
-import me.friendly.exeter.module.ModuleType;
-import me.friendly.exeter.module.ToggleableModule;
+import me.friendly.exeter.module.impl.toggle.render.hud.HudModule;
 
-public class MediaHudModule extends ToggleableModule {
-  private static final int X = 2;
-  private static final int Y = 12;
-
-  private final Listener<RenderGameOverlayEvent> renderListener =
-      new Listener<RenderGameOverlayEvent>("media_hud_render_listener") {
-        @Override
-        public void call(RenderGameOverlayEvent event) {
-          if (event.getType() != RenderGameOverlayEvent.Type.IN_GAME) return;
-          renderMediaInfo();
-        }
-      };
+public class MediaHudModule extends HudModule {
 
   public MediaHudModule() {
-    super("MediaHud", new String[] {"media", "nowplaying", "music"}, ModuleType.RENDER);
+    super("MediaHud", new String[] {"media", "nowplaying", "music"}, Corner.TOP_LEFT);
     setDescription("Displays the currently playing track on screen.");
-    this.listeners.add(renderListener);
+    this.offerProperties();
   }
 
   @Override
-  protected void onEnable() {
-    super.onEnable();
-  }
-
-  @Override
-  protected void onDisable() {
-    super.onDisable();
-  }
-
-  private void renderMediaInfo() {
+  public int getWidth() {
     MediaInfo media = MediaInfo.getInstance();
+    if (!media.isPlaying()) return 0;
+    String title = media.getTitle();
+    String artist = media.getArtist();
+    int titleW = FontUtil.getStringWidth(title);
+    int artistW = artist.isEmpty() ? 0 : FontUtil.getStringWidth(artist);
+    return Math.max(titleW, artistW);
+  }
 
+  @Override
+  public int getHeight() {
+    return MediaInfo.getInstance().isPlaying() ? 18 : 0;
+  }
+
+  @Override
+  public void render(int scaledWidth, int scaledHeight) {
+    MediaInfo media = MediaInfo.getInstance();
     if (!media.isPlaying()) return;
 
     String title = media.getTitle();
     String artist = media.getArtist();
 
-    FontUtil.drawString(title, X, Y, -1);
+    FontUtil.drawString(title, getX(), getY(), -1);
 
     if (!artist.isEmpty()) {
-      FontUtil.drawString(artist, X, Y + 9, 0xFF888888);
+      FontUtil.drawString(artist, getX(), getY() + 9, 0xFF888888);
     }
   }
 }
