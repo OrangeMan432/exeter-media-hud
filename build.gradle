@@ -17,8 +17,8 @@ repositories {
     mavenCentral()
 }
 
-def exeterJar = new File('C:/Users/orang/repos/meteor-autocart/meteor-addon-template/build/libs/exeter-1.0.jar')
-def mcJar = new File('C:/Users/orang/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-deobf/26.2/minecraft-merged-deobf-26.2.jar')
+def exeterJar = new File('C:/Users/orang/repos/exeter/build/libs/exeter-1.0.jar')
+def mcJar = new File('C:/Users/orang/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-deobf/26.4-snapshot-1/minecraft-merged-deobf-26.4-snapshot-1.jar')
 
 dependencies {
     compileOnly files(exeterJar, mcJar)

@@ -1,6 +1,7 @@
 package me.friendly.exeter.plugin.mediahud;
 
 import me.friendly.api.minecraft.render.font.FontUtil;
+import me.friendly.exeter.module.impl.active.render.Colors;
 import me.friendly.exeter.module.impl.toggle.render.hud.HudModule;
 
 public class MediaHudModule extends HudModule {
@@ -35,10 +36,10 @@ public class MediaHudModule extends HudModule {
     String title = media.getTitle();
     String artist = media.getArtist();
 
-    FontUtil.drawString(title, getX(), getY(), -1);
+    FontUtil.drawString(title, getX(), getY(), Colors.getHudMain());
 
     if (!artist.isEmpty()) {
-      FontUtil.drawString(artist, getX(), getY() + 9, 0xFF888888);
+      FontUtil.drawString(artist, getX(), getY() + 9, Colors.getHudAccent());
     }
   }
 }
