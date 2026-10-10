@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'net.fabricmc.fabric-loom' version '1.18.2'
 }
 
 version = '1.0'
@@ -17,21 +18,45 @@ repositories {
     mavenCentral()
 }
 
-def exeterJar = new File('C:/Users/orang/repos/exeter/build/libs/exeter-1.0.jar')
-def mcJar = new File('C:/Users/orang/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged-deobf/26.4-snapshot-1/minecraft-merged-deobf-26.4-snapshot-1.jar')
+def exeterJarFile = layout.buildDirectory.file('exeter-1.0.jar').get().asFile
 
-dependencies {
-    compileOnly files(exeterJar, mcJar)
+tasks.register('downloadExeter') {
+    description = 'Downloads the Exeter dev jar used as a compile-only API.'
+    outputs.file(exeterJarFile)
+    doLast {
+        exeterJarFile.parentFile.mkdirs()
+        ant.get(src: project.exeterDevUrl, dest: exeterJarFile.absolutePath)
+    }
 }
 
-jar {
-    from(sourceSets.main.output)
-    from(configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) })
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+def localExeter = findProperty('exeterJar')
+
+dependencies {
+    // Loom provides the Minecraft classes; the game supplies them at runtime.
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    compileOnly files(localExeter ? localExeter : exeterJarFile)
+}
+
+if (!localExeter) {
+    tasks.named('compileJava') {
+        dependsOn('downloadExeter')
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+// Plugin jars run inside the client: never bundle the game or Exeter itself.
+jar {
+    from(sourceSets.main.output)
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+processResources {
+    filesMatching('exeter-plugin.json') {
+        expand(project.properties)
+    }
 }
 
 def smtcFile = file('smtc-helper/smtc.exe')
@@ -43,3 +68,63 @@ task copySmtc(type: Copy) {
 }
 
 processResources.dependsOn(copySmtc)
+
+ext {
+    googleJavaFormatVersion = '1.36.1'
+}
+
+task format {
+    description = 'Formats all Java source files using google-java-format'
+    group = 'formatting'
+    def jar = layout.buildDirectory.file("google-java-format-${googleJavaFormatVersion}.jar")
+
+    doFirst {
+        def jarFile = jar.get().asFile
+        if (!jarFile.exists()) {
+            jarFile.parentFile.mkdirs()
+            ant.get(src: "https://github.com/google/google-java-format/releases/download/v${googleJavaFormatVersion}/google-java-format-${googleJavaFormatVersion}-all-deps.jar",
+                    dest: jarFile.absolutePath)
+        }
+    }
+
+    doLast {
+        def jarPath = jar.get().asFile.absolutePath
+        fileTree('src/main/java').matching { include '**/*.java' }.each { file ->
+            def proc = ['java', '-jar', jarPath, '--replace', file.absolutePath].execute()
+            proc.waitFor()
+            if (proc.exitValue() != 0) {
+                throw new GradleException("Failed to format ${file.name}: ${proc.errorStream.text}")
+            }
+        }
+    }
+}
+
+task formatCheck {
+    description = 'Fails if any Java source file is not formatted with google-java-format'
+    group = 'verification'
+    def jar = layout.buildDirectory.file("google-java-format-${googleJavaFormatVersion}.jar")
+
+    doFirst {
+        def jarFile = jar.get().asFile
+        if (!jarFile.exists()) {
+            jarFile.parentFile.mkdirs()
+            ant.get(src: "https://github.com/google/google-java-format/releases/download/v${googleJavaFormatVersion}/google-java-format-${googleJavaFormatVersion}-all-deps.jar",
+                    dest: jarFile.absolutePath)
+        }
+    }
+
+    doLast {
+        def jarPath = jar.get().asFile.absolutePath
+        def unformatted = []
+        fileTree('src/main/java').matching { include '**/*.java' }.each { file ->
+            def proc = ['java', '-jar', jarPath, '--dry-run', '--set-exit-if-changed', file.absolutePath].execute()
+            proc.waitFor()
+            if (proc.exitValue() != 0) {
+                unformatted << file.name
+            }
+        }
+        if (!unformatted.isEmpty()) {
+            throw new GradleException("Unformatted files (run ./gradlew format):\n" + unformatted.join('\n'))
+        }
+    }
+}
